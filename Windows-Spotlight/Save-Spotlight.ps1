@@ -1,3 +1,10 @@
+﻿$pattern = '[^0-9]'
+$destdir = "$env:USERPROFILE\OneDrive\Personal Documents\Background Images"
+$date = Get-Date -Format "dd MMM yyyy"
+$WorkingDir = "$env:USERPROFILE\Pictures\Spotlight\$date"
+$ErrorActionPreference = "SilentlyContinue"
+
+
 Function Get-FileMetaData 
 { 
   <# 
@@ -63,30 +70,52 @@ Function Get-FileMetaData
   } #end foreach $sfolder 
 } #end Get-FileMetaData
 
-#region Copy to Staging Folder and Clean Up
-$date = Get-Date -Format "dd MMM yyyy"
-$newdir = "$env:USERPROFILE\Pictures\Spotlight\$date"
-
-new-item $newdir -ItemType Directory -Force
-
-Copy-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets\*" -Destination $newdir -Recurse
-
-Get-ChildItem -Path $newdir -Recurse | ?{!$_.PsIsContainer} | ren -new {$_.name + ".jpg"} 
-
-
-$Pics = Get-FileMetaData -folder $newdir | % {
-$PicName = $_.Name
-if ($_.width -ne "1920 pixels") {
-
-
-remove-item -Path "$newdir\$PicName"
-
+Function Get-FileHashes {
+$DestArray = @()
+$DestArray = (Get-ChildItem -Path $destdir -Recurse | Get-FileHash).Hash | Out-Null
+$SourceArray = @()
+$SourceArray = (Get-ChildItem -Path $WorkingDir -Recurse | Get-FileHash).Hash | Out-Null
 }
 
+#region CopyStart
+
+
+new-item $WorkingDir -ItemType Directory -Force
+
+Copy-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets\*" -Destination $WorkingDir -Recurse 
+
+Get-ChildItem -Path $WorkingDir -Recurse | ?{!$_.PsIsContainer} | ren -new {$_.name + ".jpg"} 
+
+#endregion 
+
+#region HashandCopy
+$Pics = Get-FileMetaData -folder $WorkingDir 
+foreach ($pic in $pics) {
+
+        try {
+            $PicWidth = ($Pic.Dimensions.Split(" ")[0] -replace $pattern, " ").trim()
+            }
+        Catch {
+            Remove-Item ($WorkingDir + "\" + $Pic.Name) -Force 
+               }
+
+$PicWidthInt = [int]$PicWidth
+
+    if ($PicWidthInt -lt 1920) {
+          Remove-Item $Pic.Path -Force
+        }
+    else {
+          Get-FileHashes
+          foreach ($SourceHash in $SourceArray) {
+            if ($DestArray -notcontains $SourceHash) {
+                Copy-Item -Path ($WorkingDir + "\" + $Pic.Name) -Destination $destdir  -Recurse | Out-Null ##Update to your location
+            }
+          }
+
+    }
+
 }
+#endregion 
 
-#endregion
 
-Copy-Item -Path $newdir\* -Destination "$env:USERPROFILE\OneDrive\Personal Documents\Background Images" -Recurse | Out-Null ##Update to your location
-Remove-Item -Path $newdir -Force -Confirm:$false -Recurse
-
+Remove-Item -Path $WorkingDir -Recurse -Force
