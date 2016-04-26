@@ -1,5 +1,6 @@
 ﻿$pattern = '[^0-9]'
 $destdir = "$env:USERPROFILE\OneDrive\Personal Documents\Background Images"
+$destfiles = Get-ChildItem -Path $destdir
 $date = Get-Date -Format "dd MMM yyyy"
 $WorkingDir = "$env:USERPROFILE\Pictures\Spotlight\$date"
 $ErrorActionPreference = "SilentlyContinue"
@@ -70,17 +71,11 @@ Function Get-FileMetaData
   } #end foreach $sfolder 
 } #end Get-FileMetaData
 
-Function Get-FileHashes {
-$DestArray = @()
-$DestArray = (Get-ChildItem -Path $destdir -Recurse | Get-FileHash).Hash | Out-Null
-$SourceArray = @()
-$SourceArray = (Get-ChildItem -Path $WorkingDir -Recurse | Get-FileHash).Hash | Out-Null
-}
 
-#region CopyStart
+#region Copy to Working Directory
 
 
-new-item $WorkingDir -ItemType Directory -Force
+New-Item $WorkingDir -ItemType Directory -Force
 
 Copy-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy\LocalState\Assets\*" -Destination $WorkingDir -Recurse 
 
@@ -88,8 +83,10 @@ Get-ChildItem -Path $WorkingDir -Recurse | ?{!$_.PsIsContainer} | ren -new {$_.n
 
 #endregion 
 
-#region HashandCopy
+#region Remove Small Files
 $Pics = Get-FileMetaData -folder $WorkingDir 
+
+
 foreach ($pic in $pics) {
 
         try {
@@ -104,18 +101,29 @@ $PicWidthInt = [int]$PicWidth
     if ($PicWidthInt -lt 1920) {
           Remove-Item $Pic.Path -Force
         }
-    else {
-          Get-FileHashes
-          foreach ($SourceHash in $SourceArray) {
+}
+
+#endregion
+
+#region Compare Hashes and Copy
+    $DestArray = @()
+    foreach ($destfile in $destfiles) {
+        $DestArray += (Get-FileHash -Path $destfile.FullName).Hash
+    }
+
+
+
+$pics = Get-ChildItem -Path $WorkingDir
+    foreach ($pic in $pics) {
+        $SourceHash = (Get-FileHash $pic.FullName).Hash
             if ($DestArray -notcontains $SourceHash) {
-                Copy-Item -Path ($WorkingDir + "\" + $Pic.Name) -Destination $destdir  -Recurse | Out-Null ##Update to your location
+                Copy-Item -Path $pic.FullName -Destination $destdir | Out-Null ##Update to your location
             }
           }
 
-    }
 
-}
+
 #endregion 
 
 
-Remove-Item -Path $WorkingDir -Recurse -Force
+Remove-Item -Path $WorkingDir -Recurse -Force #Remove Working Directory
